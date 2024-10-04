@@ -64,10 +64,17 @@ export function createHttpServer(tempLocalData: LocalData): express.Application 
       positions.push({ y, x });
     }
 
-    const sessionId = Date.now();
-    tempLocalData[sessionId] = { grid, robotPositions: positions };
+    // now generate a random key to be given to the user who made this request.
+    // only the initializer of this simulation should have access to this key.
+    // the sessionId can be shared for spectators to use.
 
-    res.json({ sessionId });
+    // AI generated code for now
+    const key = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
+    const sessionId = Date.now();
+    tempLocalData[sessionId] = { grid, robotPositions: positions, key };
+
+    res.json({ sessionId, key });
   });
 
   app.post("/stop", (req, res) => {

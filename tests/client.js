@@ -42,15 +42,16 @@ console.log(grid);
   });
 
   const res = await req.json();
-  console.log(res);
 
-  const failws = new WebSocket("ws://localhost:3000/session/");
+  const ws = new WebSocket("ws://localhost:3000/session/" + res.sessionId, {
+    headers: {
+      "test-key": res.key, // comment this out to be not allowed.
+    },
+  });
 
-  failws.onclose = () => {
-    console.log("failws correctly closed");
-  };
-
-  const ws = new WebSocket("ws://localhost:3000/session/" + res.sessionId);
+  ws.onclose = (event) => {
+    console.log(`ws closed with code ${event.code} and reason ${event.reason}`);
+  }
 
   const { grid: recvGrid, robotPositions } = await new Promise((resolve, reject) => {
     ws.onmessage = (event) => {

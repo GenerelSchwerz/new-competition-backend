@@ -29,12 +29,15 @@ export function createServer(opts: WebSocket.ServerOptions, localData: LocalData
     }
     const data = localData[sessionId!];
     if (!data) {
-      ws.close(1, `Invalid session id: ${sessionId}`)
+      ws.close(3003, `Invalid session id: ${sessionId}`)
     }
 
     ws.send(JSON.stringify({ sessionId: parseInt(sessionId!), grid: data.grid, robotPositions: data.robotPositions }));
 
-    // handle messages"nodemon src/index.ts"
+    // handle messages
+
+    const ownerKey = data.key
+    const userKey = req.headers['test-key']
 
     let simIter = -1;
     ws.on('message', (message) => {
@@ -45,6 +48,12 @@ export function createServer(opts: WebSocket.ServerOptions, localData: LocalData
         // verification will happen here/
         case 'move': {
           const {id, roboId, move}  = msg.data;
+
+          if (ownerKey !== userKey) {
+            ws.close(3003, `Invalid simulation key: ${userKey}`)
+            return
+          }
+
           if (roboId == 0) simIter++;
           console.log(`${id} ${roboId} ${JSON.stringify(move)} | ${id - roboId} | ${simIter}`)
           break
