@@ -34,13 +34,15 @@ export function createServer(opts: WebSocket.ServerOptions, localData: LocalData
 
     ws.send(JSON.stringify({ sessionId: parseInt(sessionId!), grid: data.grid, robotPositions: data.robotPositions }));
 
-    // handle messages
+    // handle messages"nodemon src/index.ts"
 
     let simIter = -1;
     ws.on('message', (message) => {
       const msg: SimWsMsg = JSON.parse(message.toString());
 
       switch (msg.type) {
+
+        // verification will happen here/
         case 'move': {
           const {id, roboId, move}  = msg.data;
           if (roboId == 0) simIter++;
