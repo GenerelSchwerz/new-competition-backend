@@ -62,6 +62,8 @@ export function createServer(opts: WebSocket.ServerOptions, localData: LocalData
         // verification will happen here
         case "move": {
           const id = msg.data.id;
+
+          // this actually works regardless of being a map by id, or using an array. I left it as is, as perhaps the end user fucks up the ordering.
           const moves: Record<string, { x: number; y: number }> = msg.data.moves;
 
           if (ownerKey !== userKey) {
