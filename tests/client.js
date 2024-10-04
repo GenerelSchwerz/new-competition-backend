@@ -51,9 +51,9 @@ console.log(grid);
 
   ws.onclose = (event) => {
     console.log(`ws closed with code ${event.code} and reason ${event.reason}`);
-  }
+  };
 
-  const { grid: recvGrid, robotPositions } = await new Promise((resolve, reject) => {
+   const recvData = await new Promise((resolve, reject) => {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.grid) {
@@ -66,18 +66,51 @@ console.log(grid);
     };
   });
 
+  const recvGrid = recvData.grid;
+  let robotPositions = recvData.robotPositions;
+
   console.log(recvGrid);
   console.log(robotPositions);
 
+  // this is where we would allow our user code to run.
+
+
   let i = 0;
-  while (i < 5) {
+
+  // we close the connection whenever the simulation returns faulty data, such as hitting a wall.
+  // make sure to not let that happen, devs! (feature, on frontend can just display reason for failure.)
+  while (ws.readyState === WebSocket.OPEN) {
+    const moves = {};
     for (let j = 0; j < robotPositions.length; j++) {
-      const k = j + i * robotPositions.length;
-
-      ws.send(JSON.stringify({ type: "move", data: { id: k, roboId: j, move: robotPositions[j] } }));
+      const randSelect = Math.floor(Math.random() * 4);
+      moves[j] = deltaMoves[randSelect];
+      
     }
+    
+    ws.send(JSON.stringify({ type: "move", data: { id: i, moves } }));
 
+    robotPositions = await new Promise((resolve, reject) => {
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+
+        switch (msg.type) {
+          case "moveSuccess": {
+            console.log(`Move ${msg.data.id} was successful. ${JSON.stringify(msg.data.positions)}`);
+            if (msg.data.id >= i) {
+              ws.onmessage = null;
+              resolve(msg.data.positions);
+            } else if (msg.data.id > i) {
+              ws.close();
+              reject(`This shouldn't be possible. Received id ${msg.data.id} when we were expecting ${i} or less`);
+            }
+            // else: continue waiting to allow the server to catch up. Shouldn't happen in practice.
+          }
+        }
+
+       
+      };
+    })
     i++;
-    await sleep(1000);
+    // await sleep(1000); // arbitrary limit for debugging. Can be removed, the above code handles syncing with remote.
   }
 })();
