@@ -72,7 +72,7 @@ export function createHttpServer(tempLocalData: LocalData): express.Application 
     const key = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
     const sessionId = Date.now();
-    tempLocalData[sessionId] = { grid, robotPositions: positions, key };
+    tempLocalData[sessionId] = { grid, robotPositions: positions, key, wsList: [] };
 
     res.json({ sessionId, key });
   });

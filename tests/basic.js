@@ -55,13 +55,18 @@ console.log(grid);
 
    const recvData = await new Promise((resolve, reject) => {
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      const msg = JSON.parse(event.data);
+      if (msg.type !== 'init') {
+        ws.close();
+        reject('Expected init message');
+      }
+      const data = msg.data;
       if (data.grid) {
         ws.onmessage = null;
         resolve({ grid: data.grid, robotPositions: data.robotPositions });
       } else {
         ws.close();
-        reject(data);
+        reject(msg);
       }
     };
   });
