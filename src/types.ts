@@ -13,12 +13,19 @@ export type S2CWsMsgTypes = "moveUpdate"
 export type WsMoveType = "up" | "down" | "left" | "right"
 
 export type C2SWsMapping = {
-    "move": {id: number, moves: Record<string, WsMoveType>}
+    "move": {id: number, moves: Array<WsMoveType>}
+    "pastMoves": never
+}
+
+export interface Pos {
+    x: number,
+    y: number
 }
 
 export type S2CWsMapping = {
-    "moveUpdate": {id: number, positions: Array<{x: number, y: number}>}
-    "moveFailure": {id: number, positions: Array<{x: number, y: number}>, reasons: Array<string>}
+    "moveUpdate": {id: number, positions: Array<Pos>}
+    "moveFailure": {id: number, positions: Array<Pos>, reasons: Array<string>}
+    "pastMoves": {pastPositions: Array<Array<Pos>> }
 }
 
 export type C2SWsMsg<T extends keyof C2SWsMapping = keyof C2SWsMapping> = {

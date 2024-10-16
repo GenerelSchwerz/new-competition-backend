@@ -4,7 +4,16 @@ const WebSocket = require("ws");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Movement directions
-const deltaMoves = ["up", "down", "left", "right"];
+const movementPriority = ['up', 'right', 'down', 'left'];
+
+const wallMoves = {
+  up: { x: 0, y: -1 },
+  down: { x: 0, y: 1 },
+  right: { x: 1, y: 0 },
+  left: { x: -1, y: 0 },
+};
+
+
 const OUTPUT_SUBPATH = `/visual`
 
 const { createMaze, printMaze } = require('./mazeGen');
@@ -118,10 +127,10 @@ function getBacktrackMove(currentPosition, backtrackPosition) {
   // do it async
 
 
-  const dir = await fs.promises.opendir(__dirname + OUTPUT_SUBPATH);
+  const dir = await fs.promises.opendir(__dirname + OUTPUT_SUBPATH + '/raw_imgs');
   for await (const dirent of dir) {
     if (dirent.isFile() && dirent.name.endsWith('.png')) {
-      await fs.promises.unlink(__dirname + OUTPUT_SUBPATH + '/' + dirent.name);
+      await fs.promises.unlink(__dirname + OUTPUT_SUBPATH + '/raw_imgs/' + dirent.name);
     }
   }
 
@@ -133,7 +142,7 @@ function getBacktrackMove(currentPosition, backtrackPosition) {
   const req = await fetch("http://localhost:3000/init", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ grid: maze, robotCount: 1 }),
+    body: JSON.stringify({ grid: maze, robotCount: 5 }),
   });
 
   const res = await req.json();
@@ -146,14 +155,9 @@ function getBacktrackMove(currentPosition, backtrackPosition) {
   console.log(robotPositions);
 
   // Movement configuration
-  const wallMoves = {
-    up: { x: 0, y: -1 },
-    down: { x: 0, y: 1 },
-    right: { x: 1, y: 0 },
-    left: { x: -1, y: 0 },
-  };
+  const movementPriority1 = [...movementPriority]
 
-  const movementPriority = ['up', 'right', 'down', 'left'];
+
 
   // Create a visited set and pathStack for each robot
   const robots = robotPositions.map((position) => ({
@@ -161,19 +165,21 @@ function getBacktrackMove(currentPosition, backtrackPosition) {
     pathStack: [{ x: position.x, y: position.y }], // Initial path stack
   }));
 
-  let i = 1;
+  let i = 0;
 
   // WebSocket loop to explore all open nodes with backtracking
   while (ws.readyState === WebSocket.OPEN) {
-    const moves = {};
+    const moves = [];
 
     // Calculate moves for each robot
     for (let j = 0; j < robotPositions.length; j++) {
       let selectedMove = null;
       const currentRobot = robots[j];
+      
+      movementPriority1.sort(() => Math.random() - 0.5);
 
       // Select the first valid move based on movement priority
-      for (let move of movementPriority) {
+      for (let move of movementPriority1) {
         const candidateMove = wallMoves[move];
         if (isMoveValid(robotPositions[j], candidateMove, maze, currentRobot.visited)) {
           selectedMove = move;
@@ -210,15 +216,19 @@ function getBacktrackMove(currentPosition, backtrackPosition) {
         }
         
       }
-      moves[j] = selectedMove;
+      moves.push(selectedMove);
+
+      const canva = drawMazeWithRobot(maze, robotPositions[j].x, robotPositions[j].y, 30, 5);
+      await fs.promises.writeFile(__dirname + OUTPUT_SUBPATH + `/raw_imgs/maze${String(j+1).padStart(3, '0')}_${String(i+1).padStart(9, '0')}.png`, canva.toBuffer());
+  
+     
     }
+
+
 
  
 
-    const canva = drawMazeWithRobot(maze, robotPositions[0].x, robotPositions[0].y, 30, 5);
-    await fs.promises.writeFile(__dirname + OUTPUT_SUBPATH + `/maze${String(i).padStart(9, '0')}.png`, canva.toBuffer());
-
-   
+ 
 
     // Send move to server and update positions
     robotPositions = await sendMove(ws, i, moves);

@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { LocalData, C2SWsMsg, WsMoveType, S2CWsMsg } from "./types";
+import { LocalData, C2SWsMsg, WsMoveType, S2CWsMsg, S2CWsMsgTypes, S2CWsMapping } from "./types";
 
 /**
  * We want a server that listens to the wildcard endpoint: /session/:sessionId
@@ -87,6 +87,20 @@ export function createServer(opts: WebSocket.ServerOptions, localData: LocalData
 
     const visitedOpenCells = new Set();
 
+    const perRoboVisitedCells: Array<Set<any>> = []
+    for (const roboId in data.robotPositions) {
+      perRoboVisitedCells[roboId] = new Set();
+      perRoboVisitedCells[roboId].add(`${data.robotPositions[roboId].x},${data.robotPositions[roboId].y}`);
+    }
+
+    const setupPastMoves = () => {
+      return  perRoboVisitedCells.map(s=>[...s].map(str=>{
+        const [x, y] = str.split(",");
+        return { x: parseInt(x), y: parseInt(y) }
+      }));
+    }
+
+    const toWs = <T extends keyof S2CWsMapping>(ws: WebSocket, msg: S2CWsMsg<T>) => ws.send(JSON.stringify(msg));
 
     const broadcast = (msg: S2CWsMsg) => {
       for (const ws of data.wsList) {
@@ -101,16 +115,22 @@ export function createServer(opts: WebSocket.ServerOptions, localData: LocalData
     }
 
     ws.on("message", (message) => {
-      const msg: C2SWsMsg = JSON.parse(message.toString());
+      const rawMsg: C2SWsMsg = JSON.parse(message.toString());
 
 
-      switch (msg.type) {
+      switch (rawMsg.type) {
+        case "pastMoves": {
+          toWs(ws, { type: "pastMoves", data: { pastPositions: setupPastMoves() } });
+          break;
+        }
+
         // verification will happen here
         case "move": {
+          const msg = rawMsg as C2SWsMsg<"move">;
           const id = msg.data.id;
 
           // this actually works regardless of being a map by id, or using an array. I left it as is, as perhaps the end user fucks up the ordering.
-          const moves: Record<string, WsMoveType> = msg.data.moves;
+          const moves: Array<WsMoveType> = msg.data.moves;
 
           if (ownerKey !== userKey) {
             ws.close(3003, `Invalid simulation key: ${userKey}`);
@@ -118,10 +138,11 @@ export function createServer(opts: WebSocket.ServerOptions, localData: LocalData
           }
 
           // validate moves
-          for (const [robotId, moveName] of Object.entries(moves)) {
+          for (let robotId = 0; robotId < moves.length; robotId++) {
+            const moveName = moves[robotId];
             const wMove = CHECK_MOVE_MAPPING[moveName];
             const tMove = TRANS_MOVE_MAPPING[moveName];
-            const newPos = data.robotPositions[robotId as unknown as number];
+            const newPos = data.robotPositions[robotId];
             const transX = newPos.x + tMove.x;
             const transY = newPos.y + tMove.y;
 
@@ -133,7 +154,7 @@ export function createServer(opts: WebSocket.ServerOptions, localData: LocalData
               // return;
 
               // silently ignore error if invalid.
-              // console.log(`Robot ${robotId} moved out of bounds`)
+              console.log(`Robot ${robotId} moved out of bounds`)
               continue
             }
 
@@ -143,7 +164,7 @@ export function createServer(opts: WebSocket.ServerOptions, localData: LocalData
               // return;
 
               // silently ignore movement if invalid.
-              // console.log(`Robot ${robotId} moved to a wall`)
+              console.log(`Robot ${robotId} moved to a wall`)
               continue
             }
             // apply translation.
@@ -151,6 +172,7 @@ export function createServer(opts: WebSocket.ServerOptions, localData: LocalData
             newPos.y = transY;
           
             // check if we have visited this cell before.
+            perRoboVisitedCells[robotId].add(`${transX},${transY}`);
             visitedOpenCells.add(`${transX},${transY}`);
           }
 
