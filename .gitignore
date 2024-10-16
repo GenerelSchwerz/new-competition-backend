@@ -3,3 +3,6 @@ node_modules
 dist
 *.lock
 package-lock.json
+
+tests/visual/*.png
+tests/visual/*.mp4

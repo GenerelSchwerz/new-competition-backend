@@ -4,118 +4,172 @@
 
 const WebSocket = require("ws");
 
+// Utility function to simulate sleep
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const deltaMoves = [
-  { x: 0, y: 1 },
-  { x: 0, y: -1 },
-  { x: 1, y: 0 },
-  { x: -1, y: 0 },
-];
 
-const validPatternOrder = [0, 1, 2, 3];
-const invalidPatternOrder = [0, 0, 0, 0];
+const { createMaze, printMaze } = require('./mazeGen');
 
-// make a grid that is 9x9, where walls are represented by 1s and open by 0s.
-const grid = Array.from({ length: 9 }, () => Array.from({ length: 9 }, () => 0));
+// Create the maze
+const maze = createMaze(33, 33);
 
-// add some walls
-grid[0][0] = 1;
-grid[0][1] = 1;
-grid[0][2] = 1;
-grid[0][3] = 1;
-grid[0][4] = 1;
-grid[0][5] = 1;
-
-console.log(grid);
-
-(async () => {
-  const req = await fetch("http://localhost:3000/init", {
-    method: "POST",
+// WebSocket handling
+async function connectWebSocket(res) {
+  return new WebSocket("ws://localhost:3000/session/" + res.sessionId, {
     headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      grid,
-      robotCount: 2,
-    }),
-  });
-
-  const res = await req.json();
-
-  const ws = new WebSocket("ws://localhost:3000/session/" + res.sessionId, {
-    headers: {
-      "test-key": res.key, // comment this out to be not allowed.
+      "test-key": res.key, // Comment this out to be not allowed.
     },
   });
+}
 
-  ws.onclose = (event) => {
-    console.log(`ws closed with code ${event.code} and reason ${event.reason}`);
-  };
 
-   const recvData = await new Promise((resolve, reject) => {
+// Function to handle receiving initial data from WebSocket
+async function receiveInitData(ws) {
+  return new Promise((resolve, reject) => {
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type !== 'init') {
         ws.close();
         reject('Expected init message');
       }
-      const data = msg.data;
-      if (data.grid) {
+      const { grid, robotPositions } = msg.data;
+      if (grid) {
         ws.onmessage = null;
-        resolve({ grid: data.grid, robotPositions: data.robotPositions });
+        resolve({ grid, robotPositions });
       } else {
         ws.close();
         reject(msg);
       }
     };
   });
+}
 
-  const recvGrid = recvData.grid;
-  let robotPositions = recvData.robotPositions;
+// Function to send robot moves and handle server response
+async function sendMove(ws, moveId, moves, robotPositions, maze) {
+  ws.send(JSON.stringify({ type: "move", data: { id: moveId, moves } }));
 
-  console.log(recvGrid);
+  return new Promise((resolve, reject) => {
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "moveUpdate" && msg.data.id >= moveId) {
+        console.log(`Move ${msg.data.id} updated: ${JSON.stringify(msg.data.positions)}`);
+        ws.onmessage = null;
+        resolve(msg.data.positions);
+      } else if (msg.data.id > moveId) {
+        ws.close();
+        reject(`Unexpected id: ${msg.data.id}. Expected ${moveId} or less.`);
+      }
+    };
+  });
+}
+
+
+// Function to handle WebSocket close event
+function handleWebSocketClose(event, maze, ...infos) {
+  const { code, reason } = event;
+  let x, y;
+  if (reason.includes("wall")) {
+    const match = reason.match(/(\d+), (\d+)/);
+    x = parseInt(match[1]);
+    y = parseInt(match[2]);
+  }
+  console.log(`WebSocket closed with code ${code} and reason: ${reason}`);
+
+  for (const info of infos) {
+    printMaze(maze, ...info.pathStack);
+  }
+ 
+}
+
+// Main execution function
+(async () => {
+  // Fetch initial data from server
+  const req = await fetch("http://localhost:3000/init", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ grid: maze, robotCount: 1 }),
+  });
+
+  const res = await req.json();
+  const ws = await connectWebSocket(res);
+
+
+  let { grid: recvGrid, robotPositions } = await receiveInitData(ws);
+
+  const robots = robotPositions.map((position) => ({
+    pathStack: [{ x: position.x, y: position.y }], // Initial path stack
+  }));
+
+  ws.onclose = (event) => handleWebSocketClose(event, maze, ...robots);
+
+
+  printMaze(recvGrid);
   console.log(robotPositions);
 
-  // this is where we would allow our user code to run.
 
+  let movementPriority = ['up', 'right', 'down', 'left'];
 
   let i = 0;
 
-  // we close the connection whenever the simulation returns faulty data, such as hitting a wall.
-  // make sure to not let that happen, devs! (feature, on frontend can just display reason for failure.)
+  // tracks overall path.
+ 
+  // WebSocket loop to send moves
   while (ws.readyState === WebSocket.OPEN) {
     const moves = {};
+
+    // Create a visited set and pathStack for each robot
+
+  
+    // Calculate moves for each robot
     for (let j = 0; j < robotPositions.length; j++) {
-      const randSelect = Math.floor(Math.random() * 4);
-      moves[j] = deltaMoves[randSelect];
       
+      movementPriority.sort(() => Math.random() - 0.5); // Shuffle movement priority (randomize)
+      
+      // select a completely random movement. This will be invalid more often than not.
+      // current setup just ignores this movement. this is intended behavior.
+      const selectedMove = movementPriority[0];
+    
+      if (i > 100000) {
+        console.log('attempted 20 moves, exiting.')
+        ws.close();
+        return
+      }
+
+      if (!selectedMove) {
+        console.error(`No valid move found for robot ${j}, this shouldn't happen.`);
+        ws.close(); // Optionally close or handle error
+        return;
+      }
+
+      moves[j] = selectedMove;
+    }
+
+    if (i % 10000 === 0) {
+      for (const robot of robots) {
+        printMaze(maze, ...robot.pathStack)
+      }
     }
     
-    ws.send(JSON.stringify({ type: "move", data: { id: i, moves } }));
 
-    robotPositions = await new Promise((resolve, reject) => {
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
 
-        switch (msg.type) {
-          case "moveSuccess": {
-            console.log(`Move ${msg.data.id} was successful. ${JSON.stringify(msg.data.positions)}`);
-            if (msg.data.id >= i) {
-              ws.onmessage = null;
-              resolve(msg.data.positions);
-            } else if (msg.data.id > i) {
-              ws.close();
-              reject(`This shouldn't be possible. Received id ${msg.data.id} when we were expecting ${i} or less`);
-            }
-            // else: continue waiting to allow the server to catch up. Shouldn't happen in practice.
-          }
-        }
+    const oldPos = robotPositions;
+  
+    // Send move to server and update positions
+    // saving to robotPositions updates our current info
+    robotPositions = await sendMove(ws, i, moves, robotPositions, maze);
+    for (const roboId in robotPositions) {
+      const newRobo = robotPositions[roboId];
+      const oldRobo = oldPos[roboId];
 
-       
-      };
-    })
+      if (newRobo.x === oldRobo.x && newRobo.y === oldRobo.y) {
+        console.log('invalid move registered.')
+      }
+
+      // pushing to here keeps track of our history.
+      robots[roboId].pathStack.push({ x: newRobo.x, y: newRobo.y });
+    }
+
     i++;
-    // await sleep(1000); // arbitrary limit for debugging. Can be removed, the above code handles syncing with remote.
+    // await sleep(1000); // Optional sleep for debugging
   }
 })();

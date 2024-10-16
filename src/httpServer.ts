@@ -48,20 +48,20 @@ export function createHttpServer(tempLocalData: LocalData): express.Application 
       return;
     }
 
-    // now then, generate valid positions for robots.
 
-    const positions = [];
+    // same logic as above, except all must be odd (Both x and y)
+    const positions = []
     for (let i = 0; i < robotCount; i++) {
       let y = Math.floor(Math.random() * rows);
       let x = Math.floor(Math.random() * cols);
 
       // continue trying until the selected row/column is a 0 (open space)
-      while (grid[y][x] === 1) {
+      while (grid[y][x] === 1 || x % 2 === 0 || y % 2 === 0) {
         y = Math.floor(Math.random() * rows);
         x = Math.floor(Math.random() * cols);
       }
 
-      positions.push({ y, x });
+      positions.push({ x, y });
     }
 
     // now generate a random key to be given to the user who made this request.

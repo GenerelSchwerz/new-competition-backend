@@ -1,1 +1,3 @@
-# new-competition-backend
+# HeRo Lab Competition Backend
+
+## API
