@@ -45,7 +45,7 @@ async function receiveInitData(ws) {
 }
 
 // Function to send robot moves and handle server response
-async function sendMove(ws, moveId, moves, robotPositions, maze) {
+async function sendMove(ws, moveId, moves) {
   ws.send(JSON.stringify({ type: "move", data: { id: moveId, moves } }));
 
   return new Promise((resolve, reject) => {
@@ -117,8 +117,7 @@ function handleWebSocketClose(event, maze, ...infos) {
   while (ws.readyState === WebSocket.OPEN) {
     const moves = {};
 
-    // Create a visited set and pathStack for each robot
-
+    // Create a visited set and pathStack for each robo
   
     // Calculate moves for each robot
     for (let j = 0; j < robotPositions.length; j++) {
@@ -128,12 +127,7 @@ function handleWebSocketClose(event, maze, ...infos) {
       // select a completely random movement. This will be invalid more often than not.
       // current setup just ignores this movement. this is intended behavior.
       const selectedMove = movementPriority[0];
-    
-      if (i > 100000) {
-        console.log('attempted 20 moves, exiting.')
-        ws.close();
-        return
-      }
+  
 
       if (!selectedMove) {
         console.error(`No valid move found for robot ${j}, this shouldn't happen.`);
@@ -156,7 +150,7 @@ function handleWebSocketClose(event, maze, ...infos) {
   
     // Send move to server and update positions
     // saving to robotPositions updates our current info
-    robotPositions = await sendMove(ws, i, moves, robotPositions, maze);
+    robotPositions = await sendMove(ws, i, moves);
     for (const roboId in robotPositions) {
       const newRobo = robotPositions[roboId];
       const oldRobo = oldPos[roboId];
